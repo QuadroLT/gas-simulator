@@ -1,0 +1,26 @@
+* Aim
+
+Small application to learn basics thermodynamics. The  goal is to  write visualizer of molecule movement based on the energy provided to the system.
+
+
+* Current thermodynamics implementations
+- [X] molecules spawned
+- [X] walls spawned
+- [X] molecule-wall collision
+- [ ] molecule-to-molecule collition
+- [ ] Theral energy to kinetic energy relationship 
+- [ ] energy transfer from wall to molecule
+- [ ] energy transfer between molecules
+- [ ] reaction between molecules (combustion)
+
+* Current controls implementations
+
+- [ ] UI for energetic initial state controls
+- [ ] system's energy state visualizer
+
+
+* Running application
+#+begin_src shell
+  cargo build --release
+  ./gas-simulator
+#+end_src
