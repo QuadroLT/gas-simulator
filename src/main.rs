@@ -8,7 +8,7 @@ use bevy::sprite::{Mesh2dHandle, MaterialMesh2dBundle};
 use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
 
 
-// use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
 
 
 // use bevy_rapier2d::parry::query;
@@ -30,20 +30,14 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
-            // EguiPlugin,
+            EguiPlugin,
         ))
-        // .insert_resource(RapierConfiguration {
-        //     gravity: Vec2::ZERO,
-        //     ..Default::default()
-        // })
-        // .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(1000000.0))
-        // .add_plugins(RapierDebugRenderPlugin::default())
         .add_systems(Startup, setup)
         .add_systems(Update, (
-            update_positions,
             check_for_wall_collision,
             check_between_ball_collisions,
-            // ui_example_system,
+            update_positions,
+            ui_example_system,
         ))
         .run();
 }
@@ -228,7 +222,6 @@ fn update_positions( mut items: Query<(&mut Transform, &Velocity)>, time: Res<Ti
         transform.translation.x  += velocity.value.x * dt;
         transform.translation.y  += velocity.value.y * dt;
         transform.translation.z  += velocity.value.z * dt;
-
     }
 }
 
@@ -264,7 +257,6 @@ fn collide_with_wall(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
     } else {
         Collision::Bottom
     };
-
     Some(side)
 }
 
@@ -376,21 +368,19 @@ fn check_between_ball_collisions(
         let (v1, v2) = get_after_colition_velocities(&balls[0].1, &balls[0].0, &balls[0].2, balls[1].1, &balls[1].0, &balls[1].2);
         balls[0].0.value = v1;
         balls[1].0.value = v2;
-
     }
 }
 
-
-
-
-
-// fn ui_example_system(mut contexts: EguiContexts) {
-//     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
-//         ui.label("Particles");
-//         ui.label("Energies");
-//         ui.button("test").clicked();
-//     });
-// }
+fn ui_example_system(
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+) {
+    egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
+        ui.label("Particles");
+        ui.label("Energies");
+        ui.button("test").clicked();
+    });
+}
 
 
 
