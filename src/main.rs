@@ -206,9 +206,6 @@ fn setup(
             },
             Ball,
         ));
-        // .insert(RigidBody::Dynamic)
-        // .insert(Collider::ball(BALL_RADIUS))
-        // .insert(Ccd::enabled());
     };
     commands.spawn(WallBundle::new(WallLocation::Bottom));
     commands.spawn(WallBundle::new(WallLocation::Top));
@@ -265,7 +262,6 @@ fn collide_with_wall(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
      // mut commands: Commands,
      mut ball_query: Query<(&mut Velocity, &Transform), With<Ball>>,
      wall_query: Query<(Entity, &Transform), With<Wall>>,
-     // collision_events: EventWriter<CollisionEvent>,
  ){
      for (mut ball_velocity, ball_transform) in ball_query.iter_mut(){
          let ball_boundary = Ball::get_bounding_circle(ball_transform);
@@ -304,10 +300,6 @@ fn broad_phase_collision(query: &Query<(&mut Velocity, &Transform, &Mass, Entity
     let mut balls_to_update = Vec::new();
     for i in 0..ball_vec.len() - 1 {
         let ball1 = ball_vec[i].1.translation;
-        // let ball1v = ball_vec[i].0.value;
-        // let ball2v = ball_vec[i+1].0.value;
-        // let ball1m = ball_vec[i].2.value;
-        // let ball2m = ball_vec[i+1].2.value;
         let ball2 = ball_vec[i+1].1.translation;
         let item1  = ball1.x + BALL_RADIUS;
         let item2 = ball2.x - BALL_RADIUS;
@@ -372,9 +364,9 @@ fn check_between_ball_collisions(
 }
 
 fn ui_example_system(
-    mut commands: Commands,
     mut contexts: EguiContexts,
 ) {
+
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
         ui.label("Particles");
         ui.label("Energies");
