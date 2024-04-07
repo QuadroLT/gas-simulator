@@ -1,6 +1,7 @@
 
 // use std::collections::VecDeque;
 
+use bevy::ecs::query::QueryData;
 use bevy::prelude::*;
 // use bevy_rapier2d::prelude::*;
 
@@ -23,7 +24,7 @@ const WALL_LEFT: f32 = -570.0;
 const WALL_RIGHT: f32 = 570.0;
 const WALL_TOP: f32 = 350.0;
 const WALL_BOTTOM: f32 = -350.0;
-const WALL_THIKNESS: f32 = 10.0;
+const WALL_THIKNESS: f32 = 30.0;
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
 fn main() {
@@ -97,6 +98,14 @@ impl WallBundle{
 
 #[derive(Component, Debug)]
 struct Ball;
+
+#[derive(Debug, Component, Eq, PartialEq)]
+enum Molecule {
+    Methane,
+    Oxygen,
+    Formaldehyde,
+    CarbonDioxide,
+}
 
 impl Ball{
     fn get_bounding_circle(ball_transform: &Transform) -> BoundingCircle{
@@ -174,11 +183,25 @@ struct BallBundle{
     // position: Position,
     velocity: Velocity,
     mass: Mass,
+    molecule: Molecule,
 }
 
 impl BallBundle{
-    fn new() -> Self {
-        BallBundle { velocity: Velocity::random(), mass: Mass { value: BALL_MASS } }
+    fn new(molecule: Molecule) -> Self {
+        let mut mass: f32 = 0.0;
+        match molecule {
+            Molecule::Oxygen => mass = 32.0,
+            Molecule::Methane => mass = 16.0,
+            Molecule::CarbonDioxide => mass = 44.0,
+            Molecule::Formaldehyde => mass = 30.0,
+        }
+        BallBundle {
+            velocity: Velocity::random(),
+            mass: Mass {
+                value: mass,
+            },
+            molecule,
+        }
     }
 }
 
@@ -195,9 +218,14 @@ fn setup(
    }
 
     for (_i, shape) in shapes.into_iter().enumerate(){
-        let color = Color::Rgba { red: (1.), green: (1.), blue: (0.), alpha: (1.0) };
+        let mut color = Color::rgb(1.0, 0.0, 0.0);
+        let mut molecule = Molecule::Methane;
+        if _i % 2 == 0 {
+            color = Color::rgb(1.0, 1.0, 0.0);
+            molecule = Molecule::Oxygen;
+        }
         commands.spawn((
-            BallBundle::new(),
+            BallBundle::new(molecule),
             MaterialMesh2dBundle {
                 mesh: shape,
                 material: materials.add(color),
@@ -352,14 +380,16 @@ fn get_after_colition_velocities(
 
 
 fn check_between_ball_collisions(
-    mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity), With<Ball>> ){
+    mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity), With<Ball>>)
+
+{
     let targets = broad_phase_collision(&ball_query);
     for (b1, b2) in targets.into_iter(){
-        let mut balls = ball_query.get_many_mut([b1, b2]).unwrap();
+        let [mut ball1, mut ball2] = ball_query.get_many_mut([b1, b2]).unwrap();
         // let ball2 = ball_query.get(b2).unwrap();
-        let (v1, v2) = get_after_colition_velocities(&balls[0].1, &balls[0].0, &balls[0].2, balls[1].1, &balls[1].0, &balls[1].2);
-        balls[0].0.value = v1;
-        balls[1].0.value = v2;
+        let (v1, v2) = get_after_colition_velocities(&ball1.1, &ball1.0, &ball1.2, ball2.1, &ball2.0, &ball2.2);
+        ball1.0.value = v1;
+        ball2.0.value = v2;
     }
 }
 
