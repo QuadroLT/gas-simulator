@@ -29,3 +29,6 @@ Small application to learn basics thermodynamics. The  goal is to  write visuali
 * Some assumptions
 ** Thermal to kinetic energy relationship
 $$ E_{k} = \frac{mv^{2}}{2} = \frac{2}{3} k T $$
+** Ttransfer of temperature form wall to molecule
+$$ T'_{molecule} = \frac{T_{molecule} + T_{wall}}{2}
+
