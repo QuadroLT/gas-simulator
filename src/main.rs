@@ -1,7 +1,8 @@
 
 // use std::collections::VecDeque;
 
-use bevy::ecs::query::QueryData;
+use std::f32::consts::PI;
+
 use bevy::prelude::*;
 // use bevy_rapier2d::prelude::*;
 
@@ -9,23 +10,26 @@ use bevy::sprite::{Mesh2dHandle, MaterialMesh2dBundle};
 use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
 
 
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
-
+use bevy_egui::{EguiContexts, EguiPlugin};
+use bevy_egui::egui as begui;
 
 // use bevy_rapier2d::parry::query;
 use rand::prelude::*;
 use rand_distr::num_traits::Pow;
-use rand_distr::{Normal, Uniform};
+// use rand_distr::uniform::SampleRange;
+use rand_distr::{Normal, Uniform, ChiSquared};
 
 const NUMBER_OF_DOTS: i32 = 400; // TODO remove hardcoding
 const BALL_RADIUS: f32 = 5.0; // TODO remove hardcoding
-const BALL_MASS: f32 = 2.0; // TODO remove hardcoding
+const AVOGADRO: f32 = 6.02214e23;
+const BOLZMAN: f32 = 1.38065e-23;
 const WALL_LEFT: f32 = -570.0;
 const WALL_RIGHT: f32 = 570.0;
 const WALL_TOP: f32 = 350.0;
 const WALL_BOTTOM: f32 = -350.0;
 const WALL_THIKNESS: f32 = 30.0;
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
+const REDUCER: f32 = 0.2;
 
 fn main() {
     App::new()
@@ -42,6 +46,7 @@ fn main() {
         ))
         .run();
 }
+
 
 // #[derive(Component)]
 enum WallLocation{
@@ -71,14 +76,37 @@ impl WallLocation {
     }
 }
 
+#[derive(Component)]
+struct WallTemperature{
+    value: f32,
+}
+
+impl WallTemperature{
+    fn new(value: f32) ->Self{
+        WallTemperature{value}
+    }
+}
+
+#[derive(Component, Debug)]
+struct BallTemperature{
+    value: f32,
+}
+
+impl BallTemperature{
+    fn new(value: f32) -> Self{
+        BallTemperature{value}
+    }
+}
+
 #[derive(Bundle)]
 struct WallBundle{
     sprite_bundle: SpriteBundle,
     wall: Wall,
+    temperature: WallTemperature,
 }
 
 impl WallBundle{
-    fn new(location: WallLocation) -> Self {
+    fn new(location: WallLocation, temperature: WallTemperature ) -> Self {
         WallBundle {
             sprite_bundle: SpriteBundle {
                 sprite: Sprite {
@@ -90,7 +118,8 @@ impl WallBundle{
                     ..default()},
                 ..default()
             },
-            wall: Wall
+            wall: Wall,
+            temperature,
         }
     }
 }
@@ -161,16 +190,22 @@ struct Velocity{
 }
 
 impl Velocity{
-    fn random()-> Self{
+    fn random(mass: f32, temperature: f32)-> Self{
         let uniform: Uniform<f32> = Uniform::new(0.0, 1.0);
-        let normal: Normal<f32> = Normal::new(100.0, 1.0).unwrap(); // TODO remove hardcoding
+        let center: f32 = abs_velocity_from_energy(mass, temperature);
+        let normal = ChiSquared::new(center).unwrap();
         let theta = 2.0 * std::f32::consts::PI * thread_rng().sample(uniform);
-        let x = theta.sin() * thread_rng().sample(normal);
-        let y = theta.cos() * thread_rng().sample(normal);
+        let length = thread_rng().sample(normal)* REDUCER;
+        let x = theta.cos() * length; 
+        let y = theta.sin() * length;
         Velocity {
             value: Vec3 { x: (x), y: (y), z: (0.0) }
         }
     }
+}
+
+fn abs_velocity_from_energy(mass: f32, temperature: f32) -> f32{
+    ((4.0 * BOLZMAN * temperature) /( mass * 3.0)).sqrt()
 }
 
 #[derive(Component, Debug)]
@@ -184,23 +219,25 @@ struct BallBundle{
     velocity: Velocity,
     mass: Mass,
     molecule: Molecule,
+    temperature: BallTemperature,
 }
 
 impl BallBundle{
-    fn new(molecule: Molecule) -> Self {
-        let mut mass: f32 = 0.0;
+    fn new(molecule: Molecule, temperature: BallTemperature) -> Self {
+        let mass: f32;
         match molecule {
-            Molecule::Oxygen => mass = 32.0,
-            Molecule::Methane => mass = 16.0,
-            Molecule::CarbonDioxide => mass = 44.0,
-            Molecule::Formaldehyde => mass = 30.0,
+            Molecule::Oxygen => mass = 32.0 / AVOGADRO / 1000.0,
+            Molecule::Methane => mass = 16.0 / AVOGADRO / 1000.0,
+            Molecule::CarbonDioxide => mass = 44.0 / AVOGADRO / 1000.0,
+            Molecule::Formaldehyde => mass = 30.0 / AVOGADRO / 1000.0
         }
         BallBundle {
-            velocity: Velocity::random(),
+            velocity: Velocity::random(mass, temperature.value),
             mass: Mass {
                 value: mass,
             },
             molecule,
+            temperature,
         }
     }
 }
@@ -220,12 +257,13 @@ fn setup(
     for (_i, shape) in shapes.into_iter().enumerate(){
         let mut color = Color::rgb(1.0, 0.0, 0.0);
         let mut molecule = Molecule::Methane;
+        let temperature = BallTemperature::new(10.0);
         if _i % 2 == 0 {
             color = Color::rgb(1.0, 1.0, 0.0);
             molecule = Molecule::Oxygen;
         }
         commands.spawn((
-            BallBundle::new(molecule),
+            BallBundle::new(molecule, temperature),
             MaterialMesh2dBundle {
                 mesh: shape,
                 material: materials.add(color),
@@ -235,13 +273,15 @@ fn setup(
             Ball,
         ));
     };
-    commands.spawn(WallBundle::new(WallLocation::Bottom));
-    commands.spawn(WallBundle::new(WallLocation::Top));
-    commands.spawn(WallBundle::new(WallLocation::Left));
-    commands.spawn(WallBundle::new(WallLocation::Right));
+    commands.spawn(WallBundle::new(WallLocation::Bottom, WallTemperature::new(2730.15))); // TODO remove hardcoding
+    commands.spawn(WallBundle::new(WallLocation::Top, WallTemperature::new(2720.15)));
+    commands.spawn(WallBundle::new(WallLocation::Left, WallTemperature::new(2730.15)));
+    commands.spawn(WallBundle::new(WallLocation::Right, WallTemperature::new(2730.15)));
 }
 
-fn update_positions( mut items: Query<(&mut Transform, &Velocity)>, time: Res<Time>){
+fn update_positions( mut items: Query<(&mut Transform, &Velocity), With<Ball>>,
+                     time: Res<Time>
+){
     let dt = time.delta_seconds();
     for (mut transform, velocity) in &mut items {
         transform.translation.x  += velocity.value.x * dt;
@@ -252,8 +292,8 @@ fn update_positions( mut items: Query<(&mut Transform, &Velocity)>, time: Res<Ti
 
 
 
-#[derive(Debug, Event)]
-struct CollisionEvent;
+// #[derive(Debug, Event)]
+// struct CollisionEvent;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum Collision{
@@ -286,14 +326,27 @@ fn collide_with_wall(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
 }
 
 
- fn check_for_wall_collision(
+fn get_velocity_from_temperature(initial: &Vec3, temperature: &f32, mass: &f32) -> Vec3{
+    let initial_length = initial.length();
+    let center = abs_velocity_from_energy(*mass, *temperature);
+    let normal = ChiSquared::new(center).expect(format!("Got parameter {}", center).as_str());
+    let end_length = thread_rng().sample(normal) * REDUCER;
+    let ratio = end_length / initial_length;
+    Vec3::new(initial.x * ratio, initial.y * ratio, initial.z * ratio)
+}
+
+
+fn check_for_wall_collision(
      // mut commands: Commands,
-     mut ball_query: Query<(&mut Velocity, &Transform), With<Ball>>,
-     wall_query: Query<(Entity, &Transform), With<Wall>>,
+     mut ball_query: Query<(&mut Velocity, &Transform, &mut BallTemperature, &Mass), With<Ball>>,
+     wall_query: Query<(&WallTemperature, &Transform), With<Wall>>,
  ){
-     for (mut ball_velocity, ball_transform) in ball_query.iter_mut(){
+     for (mut ball_velocity,
+          ball_transform,
+          mut ball_temp,
+          mass) in ball_query.iter_mut(){
          let ball_boundary = Ball::get_bounding_circle(ball_transform);
-         for (_wall, wall_transform) in  wall_query.iter(){
+         for (wall_temp, wall_transform) in  wall_query.iter(){
              let wall_boundary = Wall::get_bounding_box(wall_transform);
              let collision_opt = collide_with_wall(ball_boundary, wall_boundary);
              if let Some(collision) = collision_opt {
@@ -312,30 +365,38 @@ fn collide_with_wall(ball: BoundingCircle, wall: Aabb2d) -> Option<Collision> {
                  if reflect_y{
                      ball_velocity.value.y = -ball_velocity.value.y;
                  }
+                 ball_temp.value = (ball_temp.value + wall_temp.value) / 2.0;
+                 let new_velocity = get_velocity_from_temperature(&ball_velocity.value, &ball_temp.value, &mass.value);
+                 ball_velocity.value = new_velocity;
              }
          }
      }
  }
 
-fn broad_phase_collision(query: &Query<(&mut Velocity, &Transform, &Mass, Entity), With<Ball>>) -> Vec<(Entity, Entity)>{
+fn broad_phase_collision(
+    query: &Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature),
+                  With<Ball>>
+) -> Vec<(Entity, Entity)>{
     let mut ball_vec = query
         .into_iter()
         .collect::<Vec<_>>();
     // sweep on x
     ball_vec.sort_by(
-        |ball1, ball2| ball1.1.translation.x.partial_cmp(&ball2.1.translation.x).unwrap()
-    );
+        |ball1, ball2| {
+            ball1.1.translation.x.partial_cmp(&ball2.1.translation.x).expect(
+                format!("Got ball1 {} ball2 {}", ball1.1.translation.x, ball2.1.translation.x).as_str())
+        });
     let mut balls_to_update = Vec::new();
     for i in 0..ball_vec.len() - 1 {
         let ball1 = ball_vec[i].1.translation;
         let ball2 = ball_vec[i+1].1.translation;
         let item1  = ball1.x + BALL_RADIUS;
         let item2 = ball2.x - BALL_RADIUS;
-        if item2 < item1 {
+        if item2 <= item1 {
             // println!(" candicadtes: {} {}", i, i+1);
             let x_proj = (ball1.x - ball2.x).abs();
             let y_proj = (ball1.y - ball2.y).abs();
-            if x_proj.pow(2.0) + y_proj.pow(2.0) <= 2.0*BALL_RADIUS.pow(2.0){
+            if x_proj.pow(2.0) + y_proj.pow(2.0) <= 2.0 * BALL_RADIUS.pow(2.0){
                 balls_to_update.push((ball_vec[i].3, ball_vec[i+1].3));
             }
         }
@@ -380,7 +441,7 @@ fn get_after_colition_velocities(
 
 
 fn check_between_ball_collisions(
-    mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity), With<Ball>>)
+    mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature), With<Ball>>)
 
 {
     let targets = broad_phase_collision(&ball_query);
@@ -390,6 +451,8 @@ fn check_between_ball_collisions(
         let (v1, v2) = get_after_colition_velocities(&ball1.1, &ball1.0, &ball1.2, ball2.1, &ball2.0, &ball2.2);
         ball1.0.value = v1;
         ball2.0.value = v2;
+        ball1.4.value = (3.0 * ball1.2.value * v1.length().pow(2.0))/ (4.0 * BOLZMAN);
+        ball2.4.value = (3.0 * ball2.2.value * v1.length().pow(2.0))/ (4.0 * BOLZMAN);
     }
 }
 
@@ -397,7 +460,7 @@ fn ui_example_system(
     mut contexts: EguiContexts,
 ) {
 
-    egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
+    begui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
         ui.label("Particles");
         ui.label("Energies");
         ui.button("test").clicked();

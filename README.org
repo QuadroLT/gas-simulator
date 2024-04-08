@@ -25,10 +25,20 @@ Small application to learn basics thermodynamics. The  goal is to  write visuali
   ./gas-simulator
 #+end_src
 
-
 * Some assumptions
 ** Thermal to kinetic energy relationship
+Average kinetic energy ideal gas follows this equation:
 $$ E_{k} = \frac{mv^{2}}{2} = \frac{2}{3} k T $$
-** Ttransfer of temperature form wall to molecule
-$$ T'_{molecule} = \frac{T_{molecule} + T_{wall}}{2}
 
+$$ v = \sqrt{\frac{4kT}{3m}}
+consequently  velocity is following function of mass and temperature: 
+$$ v = \sqrt{\frac{4}{3} \frac{kT}{m} } $$
+
+** Transfer of temperature form wall to molecule
+$$ T'_{molecule} = \frac{T_{molecule} + T_{wall}}{2} $$
+
+* Working links
+- [[https://en.wikipedia.org/wiki/Maxwell–Boltzmann_distribution]]
+- [[http://hyperphysics.phy-astr.gsu.edu/hbase/Kinetic/kintem.html#c3]]
+- [[https://en.wikipedia.org/wiki/Boltzmann_constant]]
+- [[https://en.wikipedia.org/wiki/Trigonometry]]
