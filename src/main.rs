@@ -15,17 +15,20 @@ use rand::prelude::*;
 use rand_distr::num_traits::{Pow, ToPrimitive};
 use rand_distr::{Normal, Uniform, ChiSquared};
 
-const NUMBER_OF_DOTS: i32 = 5000; // TODO remove hardcoding
-const BALL_RADIUS: f32 = 3.0; // TODO remove hardcoding
+// const NUMBER_OF_DOTS: i32 = 2000; // TODO remove hardcoding
+const REDUCER: f32 = 1.0;
+// physics constants
 const AVOGADRO: f32 = 6.02214e23;
 const BOLZMAN: f32 = 1.38065e-23;
+// static elements
+const BALL_RADIUS: f32 = 3.0; // TODO remove hardcoding
 const WALL_LEFT: f32 = -570.0;
 const WALL_RIGHT: f32 = 570.0;
 const WALL_TOP: f32 = 350.0;
 const WALL_BOTTOM: f32 = -350.0;
 const WALL_THIKNESS: f32 = 30.0;
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
-const REDUCER: f32 = 0.2;
+
 
 fn main() {
     App::new()
@@ -33,6 +36,7 @@ fn main() {
             DefaultPlugins,
             EguiPlugin,
         ))
+        .insert_resource(SimulationData::default())
         .add_systems(Startup, setup)
         .add_systems(PostStartup, create_graph_data)
         .add_systems(Update, (
@@ -45,6 +49,25 @@ fn main() {
         .run();
 }
 
+
+#[derive(Debug, Resource)]
+struct SimulationData{
+    reducer: f32,
+    number_of_balls: i32,
+    wall_temperature: f32,
+    ball_temperature: f32,
+}
+
+impl SimulationData{
+    fn default() -> Self{
+        SimulationData{
+            reducer: 1.0,
+            number_of_balls: 5000,
+            wall_temperature: 273.15,
+            ball_temperature: 5.0,
+        }
+    }
+}
 
 // #[derive(Component)]
 enum WallLocation{
@@ -244,18 +267,19 @@ impl BallBundle{
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    data: ResMut<SimulationData>,
 ) {
     commands.spawn(Camera2dBundle::default());
     let mut shapes = Vec::new();
-    for _i in 0..NUMBER_OF_DOTS {
+    for _i in 0..data.number_of_balls {
         shapes.push(Mesh2dHandle(meshes.add(Circle {radius: BALL_RADIUS})))
    }
 
     for (_i, shape) in shapes.into_iter().enumerate(){
         let mut color = Color::rgb(1.0, 0.0, 0.0);
         let mut molecule = Molecule::Methane;
-        let temperature = BallTemperature::new(10.0);
+        let temperature = BallTemperature::new(data.ball_temperature);
         if _i % 2 == 0 {
             color = Color::rgb(1.0, 1.0, 0.0);
             molecule = Molecule::Oxygen;
@@ -271,10 +295,10 @@ fn setup(
             Ball,
         ));
     };
-    commands.spawn(WallBundle::new(WallLocation::Bottom, WallTemperature::new(2730.15))); // TODO remove hardcoding
-    commands.spawn(WallBundle::new(WallLocation::Top, WallTemperature::new(2720.15)));
-    commands.spawn(WallBundle::new(WallLocation::Left, WallTemperature::new(2730.15)));
-    commands.spawn(WallBundle::new(WallLocation::Right, WallTemperature::new(2730.15)));
+    commands.spawn(WallBundle::new(WallLocation::Bottom, WallTemperature::new(data.wall_temperature))); 
+    commands.spawn(WallBundle::new(WallLocation::Top, WallTemperature::new(data.wall_temperature)));
+    commands.spawn(WallBundle::new(WallLocation::Left, WallTemperature::new(data.wall_temperature)));
+    commands.spawn(WallBundle::new(WallLocation::Right, WallTemperature::new(data.wall_temperature)));
 }
 
 fn update_positions( mut items: Query<(&mut Transform, &Velocity), With<Ball>>,
@@ -285,6 +309,15 @@ fn update_positions( mut items: Query<(&mut Transform, &Velocity), With<Ball>>,
         transform.translation.x  += velocity.value.x * dt;
         transform.translation.y  += velocity.value.y * dt;
         transform.translation.z  += velocity.value.z * dt;
+        if transform.translation.x > WALL_RIGHT - 15.0 {
+            transform.translation.x = WALL_LEFT + 20.0;
+        } else if transform.translation.x < WALL_LEFT + 15.0 {
+            transform.translation.x = WALL_RIGHT - 20.0;
+        } else if transform.translation.y > WALL_TOP - 15.0 {
+            transform.translation.y = WALL_BOTTOM + 20.0;
+        } else if transform.translation.y < WALL_BOTTOM + 15.0 {
+            transform.translation.y = WALL_TOP - 20.0;
+        }
     }
 }
 
@@ -338,6 +371,7 @@ fn check_for_wall_collision(
      // mut commands: Commands,
      mut ball_query: Query<(&mut Velocity, &Transform, &mut BallTemperature, &Mass), With<Ball>>,
      wall_query: Query<(&WallTemperature, &Transform), With<Wall>>,
+     data: Res<SimulationData>,
  ){
      for (mut ball_velocity,
           ball_transform,
@@ -363,9 +397,9 @@ fn check_for_wall_collision(
                  if reflect_y{
                      ball_velocity.value.y = -ball_velocity.value.y;
                  }
-                 ball_temp.value = (ball_temp.value + wall_temp.value) / 2.0;
+                 ball_temp.value = wall_temp.value;
                  let new_velocity = get_velocity_from_temperature(&ball_velocity.value, &ball_temp.value, &mass.value);
-                 ball_velocity.value = new_velocity;
+                 ball_velocity.value = new_velocity * data.reducer;
              }
          }
      }
@@ -439,7 +473,10 @@ fn get_after_colition_velocities(
 
 
 fn check_between_ball_collisions(
-    mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature), With<Ball>>)
+    mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature), With<Ball>>,
+    data: Res<SimulationData>,
+)
+
 {
     let targets = broad_phase_collision(&ball_query);
     for (b1, b2) in targets.into_iter(){
@@ -448,8 +485,8 @@ fn check_between_ball_collisions(
         let (v1, v2) = get_after_colition_velocities(&ball1.1, &ball1.0, &ball1.2, ball2.1, &ball2.0, &ball2.2);
         ball1.0.value = v1;
         ball2.0.value = v2;
-        ball1.4.value = (3.0 * ball1.2.value * v1.length().pow(2.0))/ (4.0 * BOLZMAN);
-        ball2.4.value = (3.0 * ball2.2.value * v1.length().pow(2.0))/ (4.0 * BOLZMAN);
+        ball1.4.value = (3.0 * ball1.2.value * (v1.length()/ data.reducer).pow(2.0))/ (4.0 * BOLZMAN);
+        ball2.4.value = (3.0 * ball2.2.value * (v1.length()/ data.reducer).pow(2.0))/ (4.0 * BOLZMAN);
     }
 }
 
@@ -494,7 +531,7 @@ fn update_graph_data(
     mut graph_data: Query<&mut BarPlotComponent>,
     ball_data: Query<&BallTemperature>,
 ){
-    let number_of_bins = 100;
+    let number_of_bins = 150;
     let ball_temperature = ball_data
         .iter()
         .map(|item| item.value.to_f64().unwrap())
@@ -512,12 +549,18 @@ fn update_graph_data(
         .unwrap();
     let step = (max - min) /number_of_bins.to_f64().unwrap();
     let mut bars = Vec::new();
-    println!("--------------------------------frame--------------------------------");
+    // println!("--------------------------------frame--------------------------------");
     for _i in 0..number_of_bins{
-        let count = ball_temperature.clone().into_iter().filter(|x| (x > &min) & (x <= &(min + step))).collect::<Vec<_>>().len().to_f64().unwrap();
+        let count = ball_temperature.clone()
+            .into_iter()
+            .filter(|x| (x > &min) & (x <= &(min + step)))
+            .collect::<Vec<_>>()
+            .len()
+            .to_f64()
+            .unwrap();
         let val = (min + step) / 2.0;
-        println!("x={val} y={count}");
-        bars.push(Bar::new(val, count));
+        // println!("x={val} y={count}");
+        bars.push(Bar::new(val, count).width(step / 2.0));
         // intervals.push((min, min + step));
         min = min + step;
         // println!("{min}");
@@ -531,7 +574,6 @@ fn ui_example_system(
     mut contexts: EguiContexts,
     histogram: Query<&BarPlotComponent>,
 ){
-    
     egui::Window::new("Controls").show(contexts.ctx_mut(),|ui: &mut egui::Ui| {
         ui.label("Particle temperature distribution");
         Plot::new("my_plot").view_aspect(2.0).show(ui, |plotui| plotui.bar_chart(
