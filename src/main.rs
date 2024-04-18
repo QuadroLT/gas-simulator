@@ -1,26 +1,22 @@
 
-// use std::collections::VecDeque;
-
-use std::f32::consts::PI;
-
 use bevy::prelude::*;
-// use bevy_rapier2d::prelude::*;
+
 
 use bevy::sprite::{Mesh2dHandle, MaterialMesh2dBundle};
 use bevy::math::bounding::{Aabb2d, BoundingCircle, BoundingVolume, IntersectsVolume};
 
 
-use bevy_egui::{EguiContexts, EguiPlugin};
-use bevy_egui::egui as begui;
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use egui_plot::{Bar, BarChart, Plot};
+
 
 // use bevy_rapier2d::parry::query;
 use rand::prelude::*;
-use rand_distr::num_traits::Pow;
-// use rand_distr::uniform::SampleRange;
+use rand_distr::num_traits::{Pow, ToPrimitive};
 use rand_distr::{Normal, Uniform, ChiSquared};
 
-const NUMBER_OF_DOTS: i32 = 400; // TODO remove hardcoding
-const BALL_RADIUS: f32 = 5.0; // TODO remove hardcoding
+const NUMBER_OF_DOTS: i32 = 5000; // TODO remove hardcoding
+const BALL_RADIUS: f32 = 3.0; // TODO remove hardcoding
 const AVOGADRO: f32 = 6.02214e23;
 const BOLZMAN: f32 = 1.38065e-23;
 const WALL_LEFT: f32 = -570.0;
@@ -38,10 +34,12 @@ fn main() {
             EguiPlugin,
         ))
         .add_systems(Startup, setup)
+        .add_systems(PostStartup, create_graph_data)
         .add_systems(Update, (
             check_for_wall_collision,
             check_between_ball_collisions,
             update_positions,
+            update_graph_data,
             ui_example_system,
         ))
         .run();
@@ -442,7 +440,6 @@ fn get_after_colition_velocities(
 
 fn check_between_ball_collisions(
     mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature), With<Ball>>)
-
 {
     let targets = broad_phase_collision(&ball_query);
     for (b1, b2) in targets.into_iter(){
@@ -456,13 +453,90 @@ fn check_between_ball_collisions(
     }
 }
 
+
+#[derive(Debug, Component)]
+struct BarPlotComponent{
+    bars: Vec<Bar>,
+}
+
+impl BarPlotComponent{
+    fn new () -> Self{
+        BarPlotComponent{
+            bars: Vec::from([Bar::new(0.0, 0.0)]),
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+struct UIDataBundle{
+    hist_data: BarPlotComponent,
+}
+
+
+
+impl UIDataBundle {
+    fn new() -> Self{
+        UIDataBundle{
+            hist_data: BarPlotComponent::new(),
+        }
+    } 
+}
+
+
+
+fn create_graph_data(
+    mut commands: Commands,
+){
+    commands.spawn(UIDataBundle::new());
+}
+
+fn update_graph_data(
+    mut graph_data: Query<&mut BarPlotComponent>,
+    ball_data: Query<&BallTemperature>,
+){
+    let number_of_bins = 100;
+    let ball_temperature = ball_data
+        .iter()
+        .map(|item| item.value.to_f64().unwrap())
+        .collect::<Vec<_>>();
+
+    let mut min = ball_temperature
+        .clone()
+        .into_iter()
+        .min_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap();
+    let max = ball_temperature
+        .clone()
+        .into_iter()
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap();
+    let step = (max - min) /number_of_bins.to_f64().unwrap();
+    let mut bars = Vec::new();
+    println!("--------------------------------frame--------------------------------");
+    for _i in 0..number_of_bins{
+        let count = ball_temperature.clone().into_iter().filter(|x| (x > &min) & (x <= &(min + step))).collect::<Vec<_>>().len().to_f64().unwrap();
+        let val = (min + step) / 2.0;
+        println!("x={val} y={count}");
+        bars.push(Bar::new(val, count));
+        // intervals.push((min, min + step));
+        min = min + step;
+        // println!("{min}");
+    }
+    let mut data = graph_data.get_single_mut().unwrap();
+    data.bars = bars;
+}
+
+
 fn ui_example_system(
     mut contexts: EguiContexts,
-) {
-
-    begui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
-        ui.label("Particles");
-        ui.label("Energies");
+    histogram: Query<&BarPlotComponent>,
+){
+    
+    egui::Window::new("Controls").show(contexts.ctx_mut(),|ui: &mut egui::Ui| {
+        ui.label("Particle temperature distribution");
+        Plot::new("my_plot").view_aspect(2.0).show(ui, |plotui| plotui.bar_chart(
+            BarChart::new(histogram.get_single().unwrap().bars.clone())
+        ));
         ui.button("test").clicked();
     });
 }
