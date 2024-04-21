@@ -8,15 +8,16 @@ Small application to learn basics thermodynamics. The  goal is to  write visuali
 - [X] walls spawned
 - [X] molecule-wall collision
 - [X] molecule-to-molecule collition
+- [ ] simulation states inserted
 - [ ] Thermal energy to kinetic energy relationship 
-- [ ] energy transfer from wall to molecule
-- [ ] energy transfer between molecules
+- [X] energy transfer from wall to molecule
+- [X] energy transfer between molecules
 - [ ] reaction between molecules (combustion)
 
 * Current controls implementations
 
 - [ ] UI for energetic initial state controls
-- [ ] system's energy state visualizer
+- [X] system's energy state visualizer
 - [ ] implement bevy-rapier for phisics
 
 * Running application

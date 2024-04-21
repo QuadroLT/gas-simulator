@@ -1,4 +1,8 @@
 
+
+
+use std::ops::RangeInclusive;
+
 use bevy::prelude::*;
 
 
@@ -13,7 +17,13 @@ use egui_plot::{Bar, BarChart, Plot};
 // use bevy_rapier2d::parry::query;
 use rand::prelude::*;
 use rand_distr::num_traits::{Pow, ToPrimitive};
-use rand_distr::{Normal, Uniform, ChiSquared};
+use rand_distr::{Uniform, ChiSquared};
+
+
+mod resources;
+use resources::{SimulationData, BarPlotData};
+
+
 
 // const NUMBER_OF_DOTS: i32 = 2000; // TODO remove hardcoding
 const REDUCER: f32 = 1.0;
@@ -21,7 +31,7 @@ const REDUCER: f32 = 1.0;
 const AVOGADRO: f32 = 6.02214e23;
 const BOLZMAN: f32 = 1.38065e-23;
 // static elements
-const BALL_RADIUS: f32 = 3.0; // TODO remove hardcoding
+const BALL_RADIUS: f32 = 2.0; 
 const WALL_LEFT: f32 = -570.0;
 const WALL_RIGHT: f32 = 570.0;
 const WALL_TOP: f32 = 350.0;
@@ -36,38 +46,37 @@ fn main() {
             DefaultPlugins,
             EguiPlugin,
         ))
+        .insert_state(AppState::Setup)
+        .insert_state(SimulationState::Paused)
         .insert_resource(SimulationData::default())
+        .insert_resource(BarPlotData::default())
         .add_systems(Startup, setup)
-        .add_systems(PostStartup, create_graph_data)
+        // .add_systems(PostStartup, controls_system)
+        .add_systems(Update, controls_system)
         .add_systems(Update, (
             check_for_wall_collision,
             check_between_ball_collisions,
             update_positions,
-            update_graph_data,
-            ui_example_system,
-        ))
+            update_graph_data,).run_if(in_state(SimulationState::Running)))
         .run();
 }
 
-
-#[derive(Debug, Resource)]
-struct SimulationData{
-    reducer: f32,
-    number_of_balls: i32,
-    wall_temperature: f32,
-    ball_temperature: f32,
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Default, States)]
+enum AppState{
+    #[default]
+    Setup,
+    Simulation,
+    TearDown,
 }
 
-impl SimulationData{
-    fn default() -> Self{
-        SimulationData{
-            reducer: 1.0,
-            number_of_balls: 5000,
-            wall_temperature: 273.15,
-            ball_temperature: 5.0,
-        }
-    }
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Default, States)]
+enum SimulationState{
+    Running,
+    #[default]
+    Paused,
 }
+
+
 
 // #[derive(Component)]
 enum WallLocation{
@@ -77,7 +86,7 @@ enum WallLocation{
     Bottom,
 }
 
-impl WallLocation {
+impl WallLocation{
     fn position(&self) -> Position {
         match self {
             WallLocation::Left => Position::new(WALL_LEFT, 0.0),
@@ -191,8 +200,8 @@ impl Position{
     }
 
     fn random() -> Self{
-        let dist_x = Normal::new(0.0, 150.0).unwrap();
-        let dist_y = Normal::new(0.0, 70.0).unwrap();
+        let dist_x = Uniform::new(-270.0, 270.0);
+        let dist_y = Uniform::new(-140.0, 140.0);
 
         Position {
             value: Vec3 {
@@ -361,7 +370,7 @@ fn get_velocity_from_temperature(initial: &Vec3, temperature: &f32, mass: &f32) 
     let initial_length = initial.length();
     let center = abs_velocity_from_energy(*mass, *temperature);
     let normal = ChiSquared::new(center).expect(format!("Got parameter {}", center).as_str());
-    let end_length = thread_rng().sample(normal) * REDUCER;
+    let end_length = thread_rng().sample(normal);
     let ratio = end_length / initial_length;
     Vec3::new(initial.x * ratio, initial.y * ratio, initial.z * ratio)
 }
@@ -397,7 +406,9 @@ fn check_for_wall_collision(
                  if reflect_y{
                      ball_velocity.value.y = -ball_velocity.value.y;
                  }
-                 ball_temp.value = wall_temp.value;
+                 if data.wall_interactions == true{
+                     ball_temp.value = (wall_temp.value + ball_temp.value) * 0.5;
+                 }
                  let new_velocity = get_velocity_from_temperature(&ball_velocity.value, &ball_temp.value, &mass.value);
                  ball_velocity.value = new_velocity * data.reducer;
              }
@@ -491,50 +502,17 @@ fn check_between_ball_collisions(
 }
 
 
-#[derive(Debug, Component)]
-struct BarPlotComponent{
-    bars: Vec<Bar>,
-}
 
-impl BarPlotComponent{
-    fn new () -> Self{
-        BarPlotComponent{
-            bars: Vec::from([Bar::new(0.0, 0.0)]),
-        }
-    }
-}
-
-#[derive(Debug, Bundle)]
-struct UIDataBundle{
-    hist_data: BarPlotComponent,
-}
-
-
-
-impl UIDataBundle {
-    fn new() -> Self{
-        UIDataBundle{
-            hist_data: BarPlotComponent::new(),
-        }
-    } 
-}
-
-
-
-fn create_graph_data(
-    mut commands: Commands,
-){
-    commands.spawn(UIDataBundle::new());
-}
 
 fn update_graph_data(
-    mut graph_data: Query<&mut BarPlotComponent>,
-    ball_data: Query<&BallTemperature>,
+    mut graph_data: ResMut<BarPlotData>,
+    ball_data: Query<&Velocity>,
+    data: Res<SimulationData>,
 ){
-    let number_of_bins = 150;
+    let number_of_bins = (data.number_of_balls / 50).to_i32().unwrap();
     let ball_temperature = ball_data
         .iter()
-        .map(|item| item.value.to_f64().unwrap())
+        .map(|item| item.value.length().to_f64().unwrap())
         .collect::<Vec<_>>();
 
     let mut min = ball_temperature
@@ -549,7 +527,6 @@ fn update_graph_data(
         .unwrap();
     let step = (max - min) /number_of_bins.to_f64().unwrap();
     let mut bars = Vec::new();
-    // println!("--------------------------------frame--------------------------------");
     for _i in 0..number_of_bins{
         let count = ball_temperature.clone()
             .into_iter()
@@ -559,31 +536,53 @@ fn update_graph_data(
             .to_f64()
             .unwrap();
         let val = (min + step) / 2.0;
-        // println!("x={val} y={count}");
         bars.push(Bar::new(val, count).width(step / 2.0));
         // intervals.push((min, min + step));
         min = min + step;
         // println!("{min}");
     }
-    let mut data = graph_data.get_single_mut().unwrap();
-    data.bars = bars;
+    // let mut data = graph_data.get_single_mut().unwrap();
+    graph_data.bars = bars;
 }
 
 
-fn ui_example_system(
-    mut contexts: EguiContexts,
-    histogram: Query<&BarPlotComponent>,
+fn controls_system(
+    mut context: EguiContexts,
+    histogram: Res<BarPlotData>,
+    mut input_data: ResMut<SimulationData>,
+    simulation_state: Res<State<SimulationState>>,
+    mut next_simulation_state: ResMut<NextState<SimulationState>>
 ){
-    egui::Window::new("Controls").show(contexts.ctx_mut(),|ui: &mut egui::Ui| {
-        ui.label("Particle temperature distribution");
-        Plot::new("my_plot").view_aspect(2.0).show(ui, |plotui| plotui.bar_chart(
-            BarChart::new(histogram.get_single().unwrap().bars.clone())
-        ));
-        ui.button("test").clicked();
+    egui::Window::new("Simulation Controls").show(context.ctx_mut(),|ui| {
+        egui::CollapsingHeader::new("Simulation Inputs").show(ui, |ui|{
+            ui.label("Number of molecules");
+            ui.add(egui::widgets::Slider::new(&mut input_data.number_of_balls, RangeInclusive::new(100, 10000)));
+            ui.label("Gas temperature");
+            ui.add(egui::widgets::Slider::new(&mut input_data.ball_temperature, RangeInclusive::new(0.1, 273.15)));
+            ui.label("Wall Temprarture");
+            ui.add(egui::widgets::Slider::new(&mut input_data.wall_temperature, RangeInclusive::new(0.1, 10000.0)));
+            ui.label("Toggle wall interactions");
+            ui.add(egui::widgets::SelectableLabel::new(true, "Off"));
+        });
+        egui::CollapsingHeader::new("Simulation Data")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.label("Particle temperature distribution");
+                let bars = histogram.bars.clone();
+                Plot::new("my_plot").view_aspect(2.0).show(ui, |plotui| plotui.bar_chart(
+                BarChart::new(bars)
+            ));
+        });
+        ui.horizontal(|ui|{
+            let start = egui::Button::new("Start/Stop").fill(egui::Color32::from_rgb(10, 200, 10));
+            let pause = egui::Button::new("Pause/Resume").fill(egui::Color32::from_rgb(200, 200, 0));
+            ui.add(start);
+            if ui.add(pause).clicked(){
+                match simulation_state.get() {
+                    SimulationState::Paused => next_simulation_state.set(SimulationState::Running),
+                    SimulationState::Running => next_simulation_state.set(SimulationState::Paused),
+                }
+            };
+        });
     });
 }
-
-
-
-
-
