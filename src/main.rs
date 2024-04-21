@@ -512,7 +512,7 @@ fn update_graph_data(
     let number_of_bins = (data.number_of_balls / 50).to_i32().unwrap();
     let ball_temperature = ball_data
         .iter()
-        .map(|item| item.value.length().to_f64().unwrap())
+        .map(|item| (item.value.length() / data.reducer).to_f64().unwrap())
         .collect::<Vec<_>>();
 
     let mut min = ball_temperature
@@ -567,9 +567,13 @@ fn controls_system(
         egui::CollapsingHeader::new("Simulation Data")
             .default_open(true)
             .show(ui, |ui| {
-                ui.label("Particle temperature distribution");
+                ui.label("Particle velocity distribution");
                 let bars = histogram.bars.clone();
-                Plot::new("my_plot").view_aspect(2.0).show(ui, |plotui| plotui.bar_chart(
+                Plot::new("my_plot")
+                    .x_axis_label("Particle velocity m/s")
+                    .y_axis_label("Number of Particles")
+                    .view_aspect(2.0)
+                    .show(ui, |plotui| plotui.bar_chart(
                 BarChart::new(bars)
             ));
         });
