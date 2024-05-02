@@ -1,6 +1,4 @@
-
-
-
+#[allow(Unused)]
 use std::ops::RangeInclusive;
 
 use bevy::prelude::*;
@@ -416,11 +414,12 @@ fn check_for_wall_collision(
      }
  }
 
+
 fn broad_phase_collision(
     query: &Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature),
                   With<Ball>>
 ) -> Vec<(Entity, Entity)>{
-    let mut ball_vec = query
+        let mut ball_vec = query
         .into_iter()
         .collect::<Vec<_>>();
     // sweep on x
@@ -435,7 +434,7 @@ fn broad_phase_collision(
         let ball2 = ball_vec[i+1].1.translation;
         let item1  = ball1.x + BALL_RADIUS;
         let item2 = ball2.x - BALL_RADIUS;
-        if item2 <= item1 {
+         if item2 <= item1 {
             // println!(" candicadtes: {} {}", i, i+1);
             let x_proj = (ball1.x - ball2.x).abs();
             let y_proj = (ball1.y - ball2.y).abs();
@@ -486,9 +485,7 @@ fn get_after_colition_velocities(
 fn check_between_ball_collisions(
     mut ball_query: Query<(&mut Velocity, &Transform, &Mass, Entity, &mut BallTemperature), With<Ball>>,
     data: Res<SimulationData>,
-)
-
-{
+){
     let targets = broad_phase_collision(&ball_query);
     for (b1, b2) in targets.into_iter(){
         let [mut ball1, mut ball2] = ball_query.get_many_mut([b1, b2]).unwrap();
